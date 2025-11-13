@@ -27,10 +27,7 @@ SAVE_QUERIES = os.getenv('SAVE_QUERIES', 'false').lower() == 'true'
 QUERY_LOG_FILE = OUTPUT_DIR / 'query_history.json'
 SIMILARITY_THRESHOLD = 0.9
 
-# # Database Configuration
-# DB_PATH = OUTPUT_DIR / 'generated_database.db'
-# IN_MEMORY_DB = False  # Set to True for in-memory database
-
+ 
 # Visualization Configuration
 FIGURE_SIZE = (10, 6)
 MAX_DISPLAY_ROWS = 15

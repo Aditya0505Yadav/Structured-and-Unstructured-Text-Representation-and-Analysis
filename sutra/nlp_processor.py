@@ -3,12 +3,12 @@
 import pandas as pd
 from typing import Optional, Tuple
 from tabulate import tabulate
-from src.cache_manager import CacheManager
+from sutra.cache_manager import CacheManager
 import openai
 import config
-from src.feedback import SimpleFeedback
-from src.schema_embeddings import SchemaEmbeddings
-from src.feedback_matcher import FeedbackMatcher
+from sutra.feedback import SimpleFeedback
+from sutra.schema_embeddings import SchemaEmbeddings
+from sutra.feedback_matcher import FeedbackMatcher
 
 class NLPProcessor:
     """Process natural language questions to SQL queries"""
