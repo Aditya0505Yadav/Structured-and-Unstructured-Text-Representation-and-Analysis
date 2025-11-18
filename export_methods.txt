@@ -1,0 +1,275 @@
+"""
+Add these methods to the SUTRA class for database export and migration
+"""
+
+# ========================================================================
+# DATABASE EXPORT & MIGRATION
+# ========================================================================
+
+def export_db(self, path: str, format: str = "sqlite"):
+    """
+    Export entire database to different formats.
+    
+    Args:
+        path: Output file path
+        format: sqlite, sql, json, or excel
+    
+    Examples:
+        >>> sutra.export_db("backup.db", format="sqlite")
+        >>> sutra.export_db("schema.sql", format="sql")
+        >>> sutra.export_db("data.xlsx", format="excel")
+    """
+    print(f"\n💾 Exporting database to {format}...")
+    
+    format = format.lower()
+    
+    if format == "sqlite":
+        # Copy SQLite database file
+        import shutil
+        shutil.copy2(self.db_path, path)
+        print(f"✅ Database copied to {path}")
+    
+    elif format == "sql":
+        # Export as SQL dump
+        with open(path, 'w', encoding='utf-8') as f:
+            for line in self.conn.iterdump():
+                f.write(f'{line}\n')
+        print(f"✅ SQL dump saved to {path}")
+    
+    elif format == "json":
+        # Export all tables as JSON
+        data = {}
+        for table in self.tables():
+            df = pd.read_sql_query(f"SELECT * FROM {table}", self.conn)
+            data[table] = df.to_dict(orient='records')
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, default=str)
+        print(f"✅ JSON export saved to {path}")
+    
+    elif format == "excel":
+        # Export all tables to Excel (each table as sheet)
+        with pd.ExcelWriter(path, engine='openpyxl') as writer:
+            for table in self.tables():
+                df = pd.read_sql_query(f"SELECT * FROM {table}", self.conn)
+                df.to_excel(writer, sheet_name=table[:31], index=False)  # Excel sheet name limit
+        print(f"✅ Excel export saved to {path}")
+    
+    else:
+        raise ValueError(f"Unsupported format: {format}. Use: sqlite, sql, json, or excel")
+    
+    return self
+
+def save_to_mysql(self, host: str, user: str, password: str, database: str, 
+                  port: int = 3306, tables: Optional[list] = None):
+    """
+    Save tables to MySQL database.
+    
+    Args:
+        host: MySQL host (e.g., 'localhost' or 'mysql.example.com')
+        user: MySQL username
+        password: MySQL password
+        database: Database name
+        port: MySQL port (default 3306)
+        tables: List of tables to export (None = all tables)
+    
+    Examples:
+        >>> # Local MySQL
+        >>> sutra.save_to_mysql("localhost", "root", "password", "my_database")
+        
+        >>> # Cloud MySQL (AWS RDS, Google Cloud SQL, etc.)
+        >>> sutra.save_to_mysql(
+        ...     host="mydb.xxxx.us-east-1.rds.amazonaws.com",
+        ...     user="admin",
+        ...     password="mypassword",
+        ...     database="production_db"
+        ... )
+    """
+    try:
+        import mysql.connector
+        from sqlalchemy import create_engine
+    except ImportError:
+        raise ImportError("MySQL support not installed. Run: pip install mysql-connector-python sqlalchemy")
+    
+    print(f"\n🔄 Connecting to MySQL at {host}:{port}...")
+    
+    # Create connection string
+    connection_string = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{database}"
+    engine = create_engine(connection_string)
+    
+    tables_to_export = tables or self.tables()
+    
+    print(f"📤 Exporting {len(tables_to_export)} tables to MySQL...")
+    
+    for table in tables_to_export:
+        print(f"   Exporting {table}...", end=" ")
+        df = pd.read_sql_query(f"SELECT * FROM {table}", self.conn)
+        df.to_sql(table, engine, if_exists='replace', index=False)
+        print(f"✅ ({len(df)} rows)")
+    
+    print(f"✅ All tables exported to MySQL database '{database}'")
+    return self
+
+def save_to_postgres(self, host: str, user: str, password: str, database: str,
+                     port: int = 5432, tables: Optional[list] = None):
+    """
+    Save tables to PostgreSQL database.
+    
+    Args:
+        host: PostgreSQL host
+        user: PostgreSQL username
+        password: PostgreSQL password
+        database: Database name
+        port: PostgreSQL port (default 5432)
+        tables: List of tables to export (None = all tables)
+    
+    Examples:
+        >>> # Local PostgreSQL
+        >>> sutra.save_to_postgres("localhost", "postgres", "password", "mydb")
+        
+        >>> # Cloud PostgreSQL (Heroku, DigitalOcean, AWS RDS, etc.)
+        >>> sutra.save_to_postgres(
+        ...     host="my-postgres.xxxx.us-east-1.rds.amazonaws.com",
+        ...     user="admin",
+        ...     password="mypassword",
+        ...     database="production_db"
+        ... )
+    """
+    try:
+        from sqlalchemy import create_engine
+        import psycopg2
+    except ImportError:
+        raise ImportError("PostgreSQL support not installed. Run: pip install psycopg2-binary sqlalchemy")
+    
+    print(f"\n🔄 Connecting to PostgreSQL at {host}:{port}...")
+    
+    # Create connection string
+    connection_string = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    engine = create_engine(connection_string)
+    
+    tables_to_export = tables or self.tables()
+    
+    print(f"📤 Exporting {len(tables_to_export)} tables to PostgreSQL...")
+    
+    for table in tables_to_export:
+        print(f"   Exporting {table}...", end=" ")
+        df = pd.read_sql_query(f"SELECT * FROM {table}", self.conn)
+        df.to_sql(table, engine, if_exists='replace', index=False)
+        print(f"✅ ({len(df)} rows)")
+    
+    print(f"✅ All tables exported to PostgreSQL database '{database}'")
+    return self
+
+def save_schema(self, path: str, format: str = "sql"):
+    """
+    Export only database schema (no data).
+    
+    Args:
+        path: Output file path
+        format: sql, json, or markdown
+    
+    Examples:
+        >>> sutra.save_schema("schema.sql")
+        >>> sutra.save_schema("schema.json", format="json")
+        >>> sutra.save_schema("schema.md", format="markdown")
+    """
+    print(f"\n📋 Exporting schema to {format}...")
+    
+    if not self.schema:
+        self._refresh_schema()
+    
+    format = format.lower()
+    
+    if format == "sql":
+        # Export CREATE TABLE statements
+        with open(path, 'w', encoding='utf-8') as f:
+            for table in self.tables():
+                # Get CREATE TABLE statement
+                self.cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'")
+                create_stmt = self.cursor.fetchone()[0]
+                f.write(f"{create_stmt};\n\n")
+        print(f"✅ SQL schema saved to {path}")
+    
+    elif format == "json":
+        # Export schema as JSON
+        schema_data = {}
+        for table, columns in self.schema.items():
+            # Get row count
+            count = pd.read_sql_query(f"SELECT COUNT(*) FROM {table}", self.conn).iloc[0, 0]
+            schema_data[table] = {
+                "columns": columns,
+                "row_count": count
+            }
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(schema_data, f, indent=2)
+        print(f"✅ JSON schema saved to {path}")
+    
+    elif format == "markdown":
+        # Export schema as Markdown documentation
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write("# Database Schema\n\n")
+            
+            for table in self.schema:
+                # Get row count
+                count = pd.read_sql_query(f"SELECT COUNT(*) FROM {table}", self.conn).iloc[0, 0]
+                
+                f.write(f"## Table: `{table}`\n\n")
+                f.write(f"**Rows:** {count}\n\n")
+                f.write("| Column | Type |\n")
+                f.write("|--------|------|\n")
+                
+                for col, dtype in self.schema[table].items():
+                    f.write(f"| {col} | {dtype} |\n")
+                
+                f.write("\n")
+        
+        print(f"✅ Markdown schema saved to {path}")
+    
+    else:
+        raise ValueError(f"Unsupported format: {format}. Use: sql, json, or markdown")
+    
+    return self
+
+def backup(self, backup_path: str = None):
+    """
+    Create a complete backup of database and schema.
+    
+    Args:
+        backup_path: Directory for backup files (default: current directory)
+    
+    Example:
+        >>> sutra.backup()
+        >>> sutra.backup("/path/to/backups")
+    """
+    import datetime
+    from pathlib import Path
+    
+    if backup_path:
+        backup_dir = Path(backup_path)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        backup_dir = Path(".")
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    print(f"\n💾 Creating backup...")
+    
+    # Backup database
+    db_backup = backup_dir / f"sutra_backup_{timestamp}.db"
+    self.export_db(str(db_backup), format="sqlite")
+    
+    # Backup schema
+    schema_backup = backup_dir / f"sutra_schema_{timestamp}.sql"
+    self.save_schema(str(schema_backup), format="sql")
+    
+    # Backup data as JSON
+    json_backup = backup_dir / f"sutra_data_{timestamp}.json"
+    self.export_db(str(json_backup), format="json")
+    
+    print(f"\n✅ Backup complete!")
+    print(f"   📁 Database: {db_backup}")
+    print(f"   📋 Schema: {schema_backup}")
+    print(f"   📊 Data: {json_backup}")
+    
+    return self
